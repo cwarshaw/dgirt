@@ -1,128 +1,150 @@
-# nolint start
 stan_code <- "
-  data {
-    int<lower=1> G; ## number of covariate groups
-    int<lower=1> Gl2; ## number of level-two demographic groups
-    int<lower=1> Q; ## number of items/questions
-    int<lower=1> T; ## number of years
-    int<lower=1> N; ## number of observed cells
-    int<lower=1> S; ## number of geographic units (e.g., states)
-    int<lower=1> P; ## number of hierarchical parameters, including geographic
-    int<lower=1> H; ## number of predictors for geographic unit effects
-    int<lower=1> Hprior; ## number of predictors for geographic unit effects (t=1)
-    int<lower=1> D; ## number of difficulty parameters per question
-    int<lower=0,upper=1> constant_item; ## indicator for constant item parameters
-    int<lower=0,upper=1> separate_t; ## indicator for no over-time smoothing
-    real delta_tbar_prior_mean;
-    real<lower=0> delta_tbar_prior_sd;
-    real<lower=0> innov_sd_delta_scale;
-    real<lower=0> innov_sd_theta_scale;
-    int n_vec[N]; ## long vector of trials
-    int s_vec[N]; ## long vector of successes
-    int NNl2[T, Q, Gl2]; ## trials
-    int SSl2[T, Q, Gl2]; ## successes
-    int<lower=0> MMM[T, Q, G]; ## missingness array
-    matrix<lower=0, upper=1>[G, P] XX; ## indicator matrix for hierarchical vars.
-    matrix<lower=0, upper=1>[Gl2, G] WT[T]; ## weight array
-    matrix[P, H] ZZ[T]; ## data for geographic model
-    matrix[P, Hprior] ZZ_prior[T]; ## data for geographic model (prior)
-    matrix<lower=0, upper=1>[T, Q] l2_only;
+data {
+  int<lower=1> G; ## number of covariate groups
+  int<lower=1> Gl2; ## number of level-two demographic groups
+  int<lower=1> Q; ## number of items/questions
+  int<lower=1> T; ## number of years
+  int<lower=1> N; ## number of observed cells
+  int<lower=1> S; ## number of geographic units (e.g., states)
+  int<lower=1> P; ## number of hierarchical parameters, including geographic
+  int<lower=1> H; ## number of predictors for geographic unit effects
+  int<lower=1> Hprior; ## number of predictors for geographic unit effects (t=1)
+  int<lower=1> D; ## number of difficulty parameters per question
+  int<lower=0,upper=1> constant_item; ## indicator for constant item parameters
+  int<lower=0,upper=1> separate_t; ## indicator for no over-time smoothing
+  real delta_tbar_prior_mean;
+  real<lower=0> delta_tbar_prior_sd;
+  real<lower=0> innov_sd_theta_scale;
+  real<lower=0> innov_sd_delta_scale;
+  int n_vec[N]; ## long vector of trials
+  int s_vec[N]; ## long vector of successes
+  int NNl2[T, Q, Gl2]; ## trials
+  int SSl2[T, Q, Gl2]; ## successes
+  int<lower=0> MMM[T, Q, G]; ## missingness array
+  matrix<lower=0, upper=1>[G, P] XX; ## indicator matrix for hierarchical vars.
+  matrix<lower=0, upper=1>[Gl2, G] WT[T]; ## weight array
+  matrix[P, H] ZZ[T]; ## data for geographic model
+  matrix[P, Hprior] ZZ_prior[T]; ## data for geographic model (prior)
+  matrix<lower=0, upper=1>[T, Q] l2_only;
+}
+transformed data {
+}
+parameters {
+  vector[Q] diff_raw[D]; ## raw difficulty
+  vector<lower=0>[Q] disc_raw; ## discrimination
+  vector[T] xi; ## common intercept
+  vector[P] gamma_raw[T]; ## hierarchical parameters (raw)
+  vector[T] delta_gamma; ## weight placed on gamma from prev. period
+  vector[H] nu_geo[T]; ## weight on geographic predictors
+  vector[Hprior] nu_geo_prior; ## weight on geographic predictors (t=1)
+  vector[T] delta_tbar; ##
+  vector[G] theta_bar_raw[T]; ## group mean ability (raw) #!#
+  #!# vector[G] theta_bar[T]; ## group means
+  vector<lower=0>[T] sd_theta_bar; ## residual sd of group ability means
+  vector<lower=0>[T] sd_theta; ## sd of abilities (by period)
+  real<lower=0> sd_gamma_geo; ## prior sd of geographic coefficients
+  real<lower=0> sd_gamma_demo; ## prior sd of demographic coefficients
+  real<lower=0> sd_innov_delta; ## innovation sd of nu_geo and delta_gamma
+  real<lower=0> sd_innov_logsd; ## innovation sd of sd_theta
+  real<lower=0> sd_innov_gamma; ## innovation sd of gamma, xi, and (opt.) diff
+}
+transformed parameters {
+  vector[G] theta_bar[T]; ## group means (transformed) #!#
+  vector[Q] diff[D]; ## adjusted difficulty
+  vector[Q] kappa[D]; ## threshold
+  vector<lower=0>[Q] disc; ## normalized discrimination
+  vector<lower=0>[Q] sd_item; ## item standard deviation
+  vector<lower=0>[Q] var_item; ## item variance
+  vector<lower=0>[T] var_theta; ## within-group variance of theta
+  ## var. of theta_bar w/in each level-two group **NOT CONSTRAINED TO BE POSITIVE**
+  vector[Gl2] var_theta_bar_l2[T];
+  vector[P] gamma[T]; ## hierarchical parameters (adjusted)
+  vector[G] mu_theta_bar[T]; ## linear predictor for group means
+  vector[P] mu_gamma[T];
+  vector[G] z[T, Q]; ## array of vectors of group deviates
+  vector[Gl2] z_l2[T, Q]; ##
+  real<lower=0,upper=1> prob[T, Q, G]; ## array of probabilities
+  vector[Gl2] prob_l2[T, Q]; ## array of probabilities
+  vector[Gl2] theta_l2[T]; ## second-level group abililities
+  ## scale (product = 1)
+  disc <- disc_raw * pow(exp(sum(log(disc_raw))), (-inv(Q)));
+  for (q in 1:Q) {
+    sd_item[q] <- inv(disc[q]); ## item standard deviations
   }
-  transformed data {
+  for (d in 1:D) {
+    ## location (mean in first year = 0)
+    diff[d] <- diff_raw[d] - mean(diff_raw[1]);
+    kappa[d] <- diff[d] ./ disc; ## item thresholds
   }
-  parameters {
-    vector[Q] diff_raw[D]; ## raw difficulty
-    vector<lower=0>[Q] disc_raw; ## discrimination
-    vector[T] xi; ## common intercept
-    vector[P] gamma_raw[T]; ## hierarchical parameters (raw)
-    vector[T] delta_gamma; ## weight placed on gamma from prev. period
-    vector[H] nu_geo[T]; ## weight on geographic predictors
-    vector[Hprior] nu_geo_prior; ## weight on geographic predictors (t=1)
-    vector[T] delta_tbar; ##
-    vector[G] theta_bar_raw[T]; ## group mean ability (raw) #!#
-    #!# vector[G] theta_bar[T]; ## group means
-    vector<lower=0>[T] sd_theta_bar; ## residual sd of group ability means
-    vector<lower=0>[T] sd_theta; ## sd of abilities (by period)
-    real<lower=0> sd_gamma; ## prior sd of geographic effects
-    real<lower=0> sd_innov_delta; ## innovation sd of nu_geo and delta_gamma
-    real<lower=0> sd_innov_logsd; ## innovation sd of sd_theta
-    real<lower=0> sd_innov_gamma; ## innovation sd of gamma, xi, and (opt.) diff
-  }
-  transformed parameters {
-    vector[G] theta_bar[T]; ## group means (transformed) #!#
-    vector[Q] diff[D]; ## adjusted difficulty
-    vector[Q] kappa[D]; ## threshold
-    vector<lower=0>[Q] disc; ## normalized discrimination
-    vector<lower=0>[Q] sd_item; ## item standard deviation
-    vector<lower=0>[Q] var_item; ## item variance
-    vector<lower=0>[T] var_theta; ## within-group variance of theta
-    ## var. of theta_bar w/in each level-two group **NOT CONSTRAINED TO BE POSITIVE**
-    vector[Gl2] var_theta_bar_l2[T];
-    vector[P] gamma[T]; ## hierarchical parameters (adjusted)
-    vector[G] mu_theta_bar[T]; ## linear predictor for group means
-    vector[P] mu_gamma[T];
-    vector[G] z[T, Q]; ## array of vectors of group deviates
-    vector[Gl2] z_l2[T, Q]; ##
-    real<lower=0,upper=1> prob[T, Q, G]; ## array of probabilities
-    vector[Gl2] prob_l2[T, Q]; ## array of probabilities
-    vector[Gl2] theta_l2[T]; ## second-level group abililities
-    ## scale (product = 1)
-    disc <- disc_raw * pow(exp(sum(log(disc_raw))), (-inv(Q)));
-    for (q in 1:Q) {
-      sd_item[q] <- inv(disc[q]); ## item standard deviations
-    }
-    for (d in 1:D) {
-      ## location (mean in first year = 0)
-      diff[d] <- diff_raw[d] - mean(diff_raw[1]);
-      kappa[d] <- diff[d] ./ disc; ## item thresholds
-    }
-    var_item <- sd_item .* sd_item;
-    var_theta <- sd_theta .* sd_theta;
-    for (t in 1:T) { ## loop over years
-      if (t == 1 || separate_t == 1) {
-        mu_gamma[t] <- ZZ_prior[t] * nu_geo_prior;
-        gamma[t] <- mu_gamma[t] + sd_gamma * gamma_raw[t];
-        mu_theta_bar[t] <- xi[t] + XX * gamma[t];
-        ##mu_theta_bar[t] <- XX * gamma[t];
-      }
-      if (t > 1 && separate_t == 0) {
-        if (t == 2) {
-          ## 2016-02-05: need to think more about nu_geo_prior; make it different for geographic and demographic
-          ## parameters
-          ##
-          ## In the second year, agian use uniformative prior for gamma, rather
-          ## than one centered on its lagged value, because gamma is likely to be
-          ## very different in periods 1 and 2 because only in 2 is
-          ## theta_bar[t - 1] used to inform theta_bar[t].
-          mu_gamma[t] <- ZZ_prior[t] * nu_geo_prior;
-          gamma[t] <- mu_gamma[t] + sd_gamma * gamma_raw[t];
-        } else {
-          ## 2016-02-05: maybe delta_gamma should differ for geographic and demographic parameters ;
-          ## could do random walk DLM for demographic parameters
-          mu_gamma[t] <- gamma[t - 1] * delta_gamma[t] + ZZ[t] * nu_geo[t];
-          gamma[t] <- mu_gamma[t] + sd_innov_gamma * gamma_raw[t];
+  var_item <- sd_item .* sd_item;
+  var_theta <- sd_theta .* sd_theta;
+  for (t in 1:T) { ## loop over years
+    if (t == 1 || separate_t == 1) {
+      mu_gamma[t] <- ZZ_prior[t] * nu_geo_prior;
+      for (p in 1:P) {
+        if (p <= S) { ## if geographic coefficient
+          gamma[t][p] <- mu_gamma[t][p] + sd_gamma_geo * gamma_raw[t][p];
         }
-        mu_theta_bar[t] <- xi[t] + XX * gamma[t] + theta_bar[t - 1] * delta_tbar[t];
-        ##mu_theta_bar[t] <- theta_bar[t - 1] * delta_tbar[t] + XX * gamma[t];
+        if (p > S) { ## if demographic coefficient
+          gamma[t][p] <- mu_gamma[t][p] + sd_gamma_demo * gamma_raw[t][p];
+        }
       }
-      ## Matt trick for group means
-      theta_bar[t] <- mu_theta_bar[t] + sd_theta_bar[t] * theta_bar_raw[t]; #!#
-      ## Weighted average of group means (weights must sum to 1)
-      theta_l2[t] <- WT[t] * theta_bar[t]; ## Gl2x1 = Gl2xG * Gx1
-      for (n in 1:Gl2) {
-        matrix[G, G] WTdiag;
-        for (g in 1:G) {
-          for (h in 1:G) {
-            if (g == h) {
-              WTdiag[g, h] <- WT[t][n][g];
-            }
-            if (g != h) {
-              WTdiag[g, h] <- 0;
-            }
+      mu_theta_bar[t] <- xi[t] + XX * gamma[t];
+      ##mu_theta_bar[t] <- XX * gamma[t];
+    }
+    if (t > 1 && separate_t == 0) {
+      if (t == 2) {
+        ## 2016-02-05: need to think more about nu_geo_prior; make it different
+        ## for geographic and demographic parameters.
+        ##
+        ## In the second year, again use uniformative prior for gamma, rather
+        ## than one centered on its lagged value, because gamma is likely to be
+        ## very different in periods 1 and 2 because only in 2 is
+        ## theta_bar[t - 1] used to inform theta_bar[t].
+        mu_gamma[t] <- ZZ_prior[t] * nu_geo_prior;
+        for (p in 1:P) {
+          if (p <= S) { ## if geographic coefficient
+            gamma[t][p] <- mu_gamma[t][p] + sd_gamma_geo * gamma_raw[t][p];
+          }
+          if (p > S) { ## if demographic coefficient
+            gamma[t][p] <- mu_gamma[t][p] + sd_gamma_demo * gamma_raw[t][p];
           }
         }
-        ## (y - w'y)' W (y - w'y) = weighted variance
-        var_theta_bar_l2[t][n] <- (theta_bar[t] - theta_l2[t, n])' * WTdiag *
+      } else {
+        ## 2016-02-05: maybe delta_gamma should differ for geographic and
+        ## demographic parameters; could also do random walk DLM for demographic
+        ## parameters
+        for (p in 1:P) {
+          if (p <= S) { ## if geographic coefficient
+            mu_gamma[t][p] <- gamma[t - 1][p]*delta_gamma[t] + ZZ[t][p]*nu_geo[t];
+          }
+          if (p > S) { ## if demographic coefficient
+            mu_gamma[t][p] <- gamma[t - 1][p]; ## random walk
+          }
+        }
+        gamma[t] <- mu_gamma[t] + sd_innov_gamma * gamma_raw[t];
+      }
+      mu_theta_bar[t] <- xi[t] + XX * gamma[t] + theta_bar[t - 1] * delta_tbar[t];
+      ##mu_theta_bar[t] <- theta_bar[t - 1] * delta_tbar[t] + XX * gamma[t];
+    }
+    ## Matt trick for group means
+    theta_bar[t] <- mu_theta_bar[t] + sd_theta_bar[t] * theta_bar_raw[t]; #!#
+    ## Weighted average of group means (weights must sum to 1)
+    theta_l2[t] <- WT[t] * theta_bar[t]; ## Gl2x1 = Gl2xG * Gx1
+    for (n in 1:Gl2) {
+      matrix[G, G] WTdiag;
+      for (g in 1:G) {
+        for (h in 1:G) {
+          if (g == h) {
+            WTdiag[g, h] <- WT[t][n][g];
+          }
+          if (g != h) {
+            WTdiag[g, h] <- 0;
+          }
+        }
+      }
+      ## (y - w'y)' W (y - w'y) = weighted variance
+      var_theta_bar_l2[t][n] <- (theta_bar[t] - theta_l2[t, n])' * WTdiag *
         (theta_bar[t] - theta_l2[t, n]);
       }
       for (q in 1:Q) { ## loop over questions
@@ -165,7 +187,8 @@ stan_code <- "
       diff_raw[1] ~ normal(0, 1); ## item difficulty (constant)
     }
     disc_raw ~ lognormal(0, 1); ## item discrimination
-    sd_gamma ~ cauchy(0, 2.5); ## sd of geographic effects
+    sd_gamma_geo ~ cauchy(0, 2.5); ## sd of geographic effects
+    sd_gamma_demo ~ cauchy(0, 2.5); ## sd of demographic effects
     sd_innov_delta ~ cauchy(0, innov_sd_delta_scale); ## innovation sd of nu_geo, delta_gamma
     sd_innov_gamma ~ cauchy(0, 2.5); ## innovation sd. of gamma, xi, and diff
     sd_innov_logsd ~ cauchy(0, innov_sd_theta_scale); ## innovation sd of theta_sd
@@ -227,5 +250,4 @@ stan_code <- "
       sd_total[t] <- sqrt(variance(theta_bar[t]) + square(sd_theta[t]));
     }
   }
-  "
-# nolint end
+"
