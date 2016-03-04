@@ -171,6 +171,10 @@ wrangle <- function(data = list(level1,
     G = G,              # number of covariate groups
     Q = Q,              # number of questions (items)
     T = T,              # number of time units (years)
+    Tdiff = 1L,
+    Tdisc = 1L,
+    constant_diff = 1L,
+    constant_disc = 1L,
     N = nrow(group_counts),  # number of observed group-question cells
     P = ncol(group_design_matrix),       # number of hierarchical parameters
     S = dim(ZZ)[[2]],   # number of geographic units
@@ -186,6 +190,10 @@ wrangle <- function(data = list(level1,
     delta_tbar_prior_sd = arg$delta_tbar_prior_sd,
     innov_sd_delta_scale = arg$innov_sd_delta_scale,
     innov_sd_theta_scale = arg$innov_sd_theta_scale,
+    scale_sd_innov_delta = 2.5,
+    scale_sd_innov_gamma = 2.5,
+    scale_sd_innov_item = 2.5,
+    scale_sd_innov_logsd = 2.5,
     group_counts = group_counts,
     vars = list(items = arg$items,
                 gt_items = grep("_gt\\d+$", colnames(level1), value = TRUE),
