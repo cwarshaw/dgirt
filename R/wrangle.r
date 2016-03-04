@@ -173,6 +173,7 @@ wrangle <- function(data = list(level1,
     T = T,              # number of time units (years)
     Tdiff = 1L,
     Tdisc = 1L,
+    Tkappa = 1L,
     constant_diff = 1L,
     constant_disc = 1L,
     N = nrow(group_counts),  # number of observed group-question cells

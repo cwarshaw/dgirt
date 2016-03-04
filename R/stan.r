@@ -1,4 +1,4 @@
-## Last edited 29-Feb-2016
+## Last edited 4-Mar-2016
 stan_code <- "
 data {
   int<lower=1> G; ## number of covariate groups
@@ -12,6 +12,7 @@ data {
   int<lower=1> Hprior; ## number of predictors for geographic unit effects (t=1)
   int<lower=1> Tdiff; ## number of difficulty parameters per question
   int<lower=1> Tdisc; ## number of discrimination parameters per question
+  int<lower=1> Tkappa; ## number of threshold parameters per question
   int<lower=0,upper=1> constant_diff; ## indicator for constant difficulties
   int<lower=0,upper=1> constant_disc; ## indicator for constant discriminations
   int<lower=0,upper=1> separate_t; ## indicator for no over-time smoothing
@@ -33,8 +34,6 @@ data {
   matrix<lower=0, upper=1>[T, Q] l2_only;
 }
 transformed data {
-  int<lower=1> Tkappa; ## number of threshold parameters per question
-  Tkappa <- fmax(Tdiff, Tdisc); ## max of number of difficulties and discriminations
 }
 parameters {
   vector[Q] diff_raw[Tdiff]; ## raw difficulty
