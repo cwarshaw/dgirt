@@ -24,7 +24,7 @@
 #' @import rstan
 #' @export
 dgirt <- function(dgirt_data, n_iter = 2000, n_chain = 2, max_save = 2000, n_warm = min(10000,
-    floor(n_iter * 3 / 4)), n_thin = ceiling((n_iter - n_warm) / (max_save / n_chain)), init_range = 1,
+    floor(n_iter * 3 / 8)), n_thin = ceiling((n_iter - n_warm) / (max_save / n_chain)), init_range = 1,
   seed = 1, save_pars = c("theta_bar", "xi", "gamma", "delta_gamma", "delta_tbar", "nu_geo",
     "nu_geo_prior", "kappa", "sd_item", "sd_theta", "sd_theta_bar", "sd_gamma", "sd_innov_gamma",
     "sd_innov_delta", "sd_innov_logsd", "sd_total", "theta_l2", "var_theta_bar_l2"),
